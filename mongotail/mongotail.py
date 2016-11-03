@@ -24,7 +24,7 @@
 
 
 from __future__ import absolute_import
-import sys, re, argparse
+
 from .conn import connect
 from .out import print_obj
 from .err import error, error_parsing, EINTR, EDESTADDRREQ
@@ -33,6 +33,8 @@ from pymongo.read_preferences import ReadPreference
 from pymongo.errors import ConnectionFailure
 
 from . import __version__, __license__, __doc__, __url__, __usage__
+
+import sys, re, argparse
 
 DEFAULT_LIMIT = 10
 LOG_QUERY = {
@@ -49,7 +51,11 @@ LOG_QUERY = {
         "op": re.compile(r"^((?!(getmore|killcursors)).)"),
 }
 
-LOG_FIELDS = ['ts', 'op', 'ns', 'query', 'updateobj', 'command', 'ninserted', 'ndeleted', 'nMatched', 'nreturned']
+LOG_FIELDS = ['ts', 'op', 'ns', 'query', 'updateobj', 'command', 'ninserted', 'ndeleted', 'nMatched', 'nreturned',
+                # added
+                'keysExamined', 'docsExamined', 'millis', 'execStats',
+                'hasSortStage', 'scanAndOrder', 'writeConflicts',
+              ]
 
 
 def tail(client, db, lines, follow, verbose, metadata):
@@ -74,6 +80,8 @@ def tail(client, db, lines, follow, verbose, metadata):
             cursor.skip(skip)
     if follow:
         cursor.add_option(2)  # Set the tailable flag
+        # added
+        cursor.add_option(32) # Set the awaitdata flag
     while cursor.alive:
         try:
             result = next(cursor)

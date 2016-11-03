@@ -26,10 +26,16 @@ from __future__ import absolute_import
 import sys
 from .jsondec import JSONEncoder
 from .err import warn
+from .queryutil import get_index
 
+from datetime import timezone
 
 json_encoder = JSONEncoder()
 
+# added
+def utc_to_local(utc_dt):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
+# ----
 
 def print_obj(obj, verbose, metadata, mongo_version):
     """
@@ -43,19 +49,52 @@ def print_obj(obj, verbose, metadata, mongo_version):
             ts_time = obj['ts']
             operation = obj['op']
             doc = None
+
+            # added
+            millis = '%s millis.' % obj['millis']
+            # -----
+
             if operation == 'query':
                 if mongo_version < "3.2":
                     doc = obj['ns'].split(".")[-1]
                     query = json_encoder.encode(obj['query']) if 'query' in obj else "{}"
+
+                    # added
+                    query += ' %s.' % get_index(mongo_version, obj['execStats'])
+                    if 'scanAndOrder' in obj:
+                        query += ' scanAndOrder: %s.' % obj['scanAndOrder']
+                    query += ' %s keysExamined.' % obj['nscanned']
+                    query += ' %s docsExamined.' % obj['nscannedObjects']
+                    # ----
+
+                    query += '. %s returned.' % obj['nreturned']
+
                 else:
                     doc = obj['query']['find']
                     query = json_encoder.encode(obj['query']['filter']) if 'filter' in obj['query'] else "{}"
-                query += '. %s returned.' % obj['nreturned']
+
+                    # added
+                    query += ' %s.' % get_index(mongo_version, obj['execStats'])
+                    if 'hasSortStage' in obj:
+                        query += ' scanAndOrder: %s.' % obj['hasSortStage']
+                    query += ' %s keysExamined.' % obj['keysExamined']
+                    query += ' %s docsExamined.' % obj['docsExamined']
+                    # -----
+
+                    query += ' %s returned.' % obj['nreturned']
+
             elif operation == 'update':
                 doc = obj['ns'].split(".")[-1]
                 query = json_encoder.encode(obj['query']) if 'query' in obj else "{}"
                 if 'updateobj' in obj:
                     query += ', ' + json_encoder.encode(obj['updateobj'])
+
+                    # added
+                    query += ' %s writeConflicts.' % obj['writeConflicts']
+                    query += ' %s keysExamined.' % obj['keysExamined']
+                    query += ' %s docsExamined.' % obj['docsExamined']
+                    # -----
+
                     query += '. %s updated.' % obj['nMatched']
             elif operation == 'insert':
                 if mongo_version < "3.2":
@@ -159,9 +198,15 @@ def print_obj(obj, verbose, metadata, mongo_version):
                     if not query.endswith(" "): query += " "
                     query += ", ".join(met)
 
-            sys.stdout.write("%s %s [%s] : %s\n" % (ts_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-                                                    operation.upper().ljust(9), doc, query))
+            # sys.stdout.write("%s %s [%s] : %s\n" % (utc_to_local(ts_time).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            #                                         operation.upper().ljust(9), doc, query))
+            # added
+            sys.stdout.write("%s %s [%s] : %s %s\n" % (utc_to_local(ts_time).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                                                       operation.upper().ljust(9), doc, query, millis))
+            # ----
             sys.stdout.flush()  # Allows pipe the output during the execution with others tools like 'grep'
+            # sys.__stdout__.flush()  # Allows pipe the output during the execution with others tools like 'grep'
+
         except KeyError:
             warn('Unknown registry\nDump: %s' % json_encoder.encode(obj))
 
